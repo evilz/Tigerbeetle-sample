@@ -4,6 +4,7 @@
     <Project Path="src/TigerBeetleSample.AppHost/TigerBeetleSample.AppHost.csproj" />
     <Project Path="src/TigerBeetleSample.Domain/TigerBeetleSample.Domain.csproj" />
     <Project Path="src/TigerBeetleSample.Infrastructure/TigerBeetleSample.Infrastructure.csproj" />
+    <Project Path="src/TigerBeetleSample.PerformanceTests/TigerBeetleSample.PerformanceTests.csproj" />
     <Project Path="src/TigerBeetleSample.ServiceDefaults/TigerBeetleSample.ServiceDefaults.csproj" />
   </Folder>
 </Solution>
