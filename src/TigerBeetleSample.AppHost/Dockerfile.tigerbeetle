@@ -1,0 +1,7 @@
+FROM ghcr.io/tigerbeetle/tigerbeetle:0.16.78 AS tigerbeetle-binary
+
+FROM alpine:3.21
+COPY --from=tigerbeetle-binary /tigerbeetle /tigerbeetle
+RUN mkdir -p /data
+EXPOSE 3000
+CMD ["/bin/sh", "-c", "/tigerbeetle format --cluster=0 --replica=0 --replica-count=1 /data/0_0.tigerbeetle && exec /tigerbeetle start --addresses=0.0.0.0:3000 /data/0_0.tigerbeetle"]
