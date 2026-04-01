@@ -33,7 +33,7 @@ public static class InfrastructureExtensions
 
         services.AddScoped<IAccountProjectionRepository, AccountProjectionRepository>();
         services.AddScoped<ITransferProjectionRepository, TransferProjectionRepository>();
-        services.AddScoped<ILedgerService, TigerBeetleLedgerService>();
+        services.AddSingleton<ILedgerService, TigerBeetleLedgerService>();
 
         return services;
     }
