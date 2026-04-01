@@ -54,12 +54,12 @@ public static class AccountEndpoints
     {
         var accounts = await repository.GetAllAsync(cancellationToken);
 
-        var responses = new List<AccountResponse>();
-        foreach (var account in accounts)
-        {
-            var (credits, debits) = await ledgerService.GetBalanceAsync(account.Id, cancellationToken);
-            responses.Add(ToResponse(account, credits, debits));
-        }
+        var balanceTasks = accounts.Select(a => ledgerService.GetBalanceAsync(a.Id, cancellationToken));
+        var balances = await Task.WhenAll(balanceTasks);
+
+        var responses = accounts
+            .Zip(balances, (account, balance) => ToResponse(account, balance.CreditsPosted, balance.DebitsPosted))
+            .ToList();
 
         return Results.Ok(responses);
     }
