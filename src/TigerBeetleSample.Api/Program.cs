@@ -30,6 +30,5 @@ if (app.Environment.IsDevelopment())
 
 app.MapAccountEndpoints();
 app.MapTransferEndpoints();
-app.MapPerformanceEndpoints();
 
 app.Run();
