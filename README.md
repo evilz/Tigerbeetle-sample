@@ -107,3 +107,49 @@ Available at `/openapi/v1.json` in development. Open `http://localhost:<port>/op
 | `tigerbeetle` (.NET client) | 0.16.78 |
 | `TigerBeetle` (server image) | 0.16.78 |
 | `Npgsql.EntityFrameworkCore.PostgreSQL` | 10.0.1 |
+
+
+# Performance
+
+```
+═══════════════════════════════════════════════════════════════
+TigerBeetle Load Test (real API - includes PostgreSQL)
+═══════════════════════════════════════════════════════════════
+API URL        : http://localhost:5253
+Account count  : 1 000
+Transfer count : 100 000
+Concurrency    : 50
+═══════════════════════════════════════════════════════════════
+
+? Step 1 - Account creation via POST /accounts (TigerBeetle + PostgreSQL)
+Sending 1 000 requests with concurrency=50 .
+┌─ Account creation
+│  Total requests   : 1 000
+│  Succeeded        : 1 000
+│  Failed           : 0
+│  Total elapsed    : 962 ms
+│  Throughput       : 1 039 req/sec
+│  Latency p50      : 25 ms
+│  Latency p95      : 71 ms
+└─ Latency p99      : 424 ms
+Fetching account list for transfer phase . 1 000 found
+
+? Step 2 - Transfer creation via POST /transfers (TigerBeetle + PostgreSQL)
+Sending 100 000 requests with concurrency=50 .
+┌─ Transfer creation
+│  Total requests   : 100 000
+│  Succeeded        : 100 000
+│  Failed           : 0
+│  Total elapsed    : 54 939 ms
+│  Throughput       : 1 820 req/sec
+│  Latency p50      : 23 ms
+│  Latency p95      : 52 ms
+└─ Latency p99      : 82 ms
+
+═══════════════════════════════════════════════════════════════
+Summary
+═══════════════════════════════════════════════════════════════
+Accounts         1 000 req       962 ms       1 039 req/sec       0 failed
+Transfers      100 000 req    54 939 ms       1 820 req/sec       0 failed
+═══════════════════════════════════════════════════════════════
+```
