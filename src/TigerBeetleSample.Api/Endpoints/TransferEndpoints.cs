@@ -1,4 +1,6 @@
+using TigerBeetleSample.Domain.Events;
 using TigerBeetleSample.Domain.Interfaces;
+using Wolverine;
 
 namespace TigerBeetleSample.Api.Endpoints;
 
@@ -22,7 +24,7 @@ public static class TransferEndpoints
     private static async Task<IResult> CreateTransferAsync(
         CreateTransferRequest request,
         ILedgerService ledgerService,
-        ITransferProjectionRepository repository,
+        IMessageBus bus,
         CancellationToken cancellationToken)
     {
         var transferId = await ledgerService.CreateTransferAsync(
@@ -33,21 +35,16 @@ public static class TransferEndpoints
             request.Code,
             cancellationToken);
 
-        var projection = new Domain.Entities.TransferProjection
-        {
-            Id = transferId,
-            DebitAccountId = request.DebitAccountId,
-            CreditAccountId = request.CreditAccountId,
-            Amount = request.Amount,
-            Ledger = request.Ledger,
-            Code = request.Code,
-            CreatedAt = DateTimeOffset.UtcNow,
-        };
+        await bus.PublishAsync(new TransferCreatedEvent(
+            transferId,
+            request.DebitAccountId,
+            request.CreditAccountId,
+            request.Amount,
+            request.Ledger,
+            request.Code,
+            DateTimeOffset.UtcNow));
 
-        await repository.AddAsync(projection, cancellationToken);
-        await repository.SaveChangesAsync(cancellationToken);
-
-        return Results.Created($"/transfers/account/{request.DebitAccountId}", ToResponse(projection));
+        return Results.Accepted($"/transfers/account/{request.DebitAccountId}", new { Id = transferId });
     }
 
     private static async Task<IResult> GetTransfersByAccountAsync(

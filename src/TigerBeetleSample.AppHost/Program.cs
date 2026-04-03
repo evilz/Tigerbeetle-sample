@@ -8,6 +8,9 @@ var postgres = builder.AddPostgres("postgres")
 
 var postgresDb = postgres.AddDatabase("ledgerdb");
 
+var rabbitmq = builder.AddRabbitMQ("rabbitmq")
+    .WithManagementPlugin();
+
 var tigerbeetle = builder
     .AddDockerfile("tigerbeetle", ".", "Dockerfile.tigerbeetle")
     // TigerBeetle needs io_uring; default Docker seccomp may block it on some hosts.
@@ -18,7 +21,9 @@ var tigerbeetleEndpoint = tigerbeetle.GetEndpoint("tcp");
 
 builder.AddProject<Projects.TigerBeetleSample_Api>("api")
     .WithReference(postgresDb)
+    .WithReference(rabbitmq)
     .WaitFor(postgresDb)
+    .WaitFor(rabbitmq)
     .WaitFor(tigerbeetle)
     .WithEnvironment("TigerBeetle__Addresses",
         $"{tigerbeetleEndpoint.Property(EndpointProperty.IPV4Host)}:{tigerbeetleEndpoint.Property(EndpointProperty.Port)}");

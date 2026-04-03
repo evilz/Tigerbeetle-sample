@@ -1,25 +1,37 @@
 using TigerBeetleSample.Api.Endpoints;
-using TigerBeetleSample.Infrastructure.Data;
+using TigerBeetleSample.Domain.Events;
 using TigerBeetleSample.Infrastructure.Extensions;
+using TigerBeetleSample.Infrastructure.Handlers;
 using TigerBeetleSample.ServiceDefaults;
+using Wolverine;
+using Wolverine.RabbitMQ;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-builder.AddNpgsqlDbContext<AppDbContext>("ledgerdb");
-
 builder.Services.AddInfrastructure(builder.Configuration);
 
 builder.Services.AddOpenApi();
 
-var app = builder.Build();
+var rabbitMqConnectionString = builder.Configuration.GetConnectionString("rabbitmq")
+    ?? "amqp://guest:guest@localhost:5672/";
 
-using (var scope = app.Services.CreateScope())
+builder.Host.UseWolverine(opts =>
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.EnsureCreatedAsync();
-}
+    opts.UseRabbitMq(new Uri(rabbitMqConnectionString))
+        .AutoProvision();
+
+    opts.PublishMessage<AccountCreatedEvent>().ToRabbitQueue("account-created");
+    opts.PublishMessage<TransferCreatedEvent>().ToRabbitQueue("transfer-created");
+
+    opts.ListenToRabbitQueue("account-created");
+    opts.ListenToRabbitQueue("transfer-created");
+
+    opts.Discovery.IncludeAssembly(typeof(AccountProjectionHandler).Assembly);
+});
+
+var app = builder.Build();
 
 app.MapDefaultEndpoints();
 

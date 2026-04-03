@@ -1,9 +1,12 @@
 using System.Net;
 using System.Net.Sockets;
+using Marten;
 using Microsoft.Extensions.Configuration;
+using Wolverine.Marten;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using TigerBeetle;
+using TigerBeetleSample.Domain.Entities;
 using TigerBeetleSample.Domain.Interfaces;
 using TigerBeetleSample.Infrastructure.Options;
 using TigerBeetleSample.Infrastructure.Repositories;
@@ -32,6 +35,18 @@ public static class InfrastructureExtensions
                 clusterID: (System.UInt128)options.ClusterId,
                 addresses: [NormalizeAddresses(options.Addresses)]);
         });
+
+        var connectionString = configuration.GetConnectionString("ledgerdb")
+            ?? throw new InvalidOperationException("Connection string 'ledgerdb' is required.");
+
+        services.AddMarten(opts =>
+        {
+            opts.Connection(connectionString);
+            opts.Schema.For<AccountProjection>().Identity(x => x.Id);
+            opts.Schema.For<TransferProjection>().Identity(x => x.Id);
+        })
+        .ApplyAllDatabaseChangesOnStartup()
+        .IntegrateWithWolverine();
 
         services.AddScoped<IAccountProjectionRepository, AccountProjectionRepository>();
         services.AddScoped<ITransferProjectionRepository, TransferProjectionRepository>();

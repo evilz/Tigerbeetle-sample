@@ -1,34 +1,23 @@
-using Microsoft.EntityFrameworkCore;
+using Marten;
 using TigerBeetleSample.Domain.Entities;
 using TigerBeetleSample.Domain.Interfaces;
-using TigerBeetleSample.Infrastructure.Data;
 
 namespace TigerBeetleSample.Infrastructure.Repositories;
 
 public sealed class TransferProjectionRepository : ITransferProjectionRepository
 {
-    private readonly AppDbContext _context;
+    private readonly IQuerySession _session;
 
-    public TransferProjectionRepository(AppDbContext context)
+    public TransferProjectionRepository(IQuerySession session)
     {
-        _context = context;
-    }
-
-    public async Task AddAsync(TransferProjection transfer, CancellationToken cancellationToken = default)
-    {
-        await _context.Transfers.AddAsync(transfer, cancellationToken);
+        _session = session;
     }
 
     public async Task<IReadOnlyList<TransferProjection>> GetByAccountIdAsync(Guid accountId, CancellationToken cancellationToken = default)
     {
-        return await _context.Transfers
+        return await _session.Query<TransferProjection>()
             .Where(t => t.DebitAccountId == accountId || t.CreditAccountId == accountId)
             .OrderBy(t => t.CreatedAt)
             .ToListAsync(cancellationToken);
-    }
-
-    public Task SaveChangesAsync(CancellationToken cancellationToken = default)
-    {
-        return _context.SaveChangesAsync(cancellationToken);
     }
 }
