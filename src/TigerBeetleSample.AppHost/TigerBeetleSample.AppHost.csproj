@@ -1,19 +1,21 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Aspire.AppHost.Sdk/13.2.1">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+  </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\TigerBeetleSample.Api\TigerBeetleSample.Api.csproj" IsAspireProjectResource="true" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.AppHost" Version="13.2.1" />
+    <PackageReference Include="Aspire.Hosting" Version="13.2.1" />
     <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.2.1" />
   </ItemGroup>
 
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
 
 </Project>

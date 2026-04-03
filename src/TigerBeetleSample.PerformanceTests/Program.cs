@@ -21,9 +21,9 @@ using System.Text.Json.Serialization;
 // The results show whether PostgreSQL or TigerBeetle is the bottleneck.
 // ---------------------------------------------------------------------------
 
-var baseUrl = "http://localhost:5000";
+var baseUrl = "http://localhost:5253";
 var accountCount = 1_000;
-var transferCount = 5_000;
+var transferCount = 100_000;
 var concurrency = 50;
 
 if (args.Length > 0 && !string.IsNullOrWhiteSpace(args[0]))

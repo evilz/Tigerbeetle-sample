@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -28,7 +30,7 @@ public static class InfrastructureExtensions
             var options = sp.GetRequiredService<IOptions<TigerBeetleOptions>>().Value;
             return new Client(
                 clusterID: (System.UInt128)options.ClusterId,
-                addresses: [options.Addresses]);
+                addresses: [NormalizeAddresses(options.Addresses)]);
         });
 
         services.AddScoped<IAccountProjectionRepository, AccountProjectionRepository>();
@@ -36,5 +38,59 @@ public static class InfrastructureExtensions
         services.AddSingleton<ILedgerService, TigerBeetleLedgerService>();
 
         return services;
+    }
+
+    private static string NormalizeAddresses(string addresses)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(addresses);
+
+        var normalizedAddresses = addresses
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(NormalizeAddress);
+
+        return string.Join(',', normalizedAddresses);
+    }
+
+    private static string NormalizeAddress(string address)
+    {
+        if (int.TryParse(address, out _))
+            return address;
+
+        if (Uri.TryCreate(address, UriKind.Absolute, out var absoluteUri))
+            return NormalizeHostAndPort(absoluteUri.Host, absoluteUri.Port, address);
+
+        if (Uri.TryCreate($"tcp://{address}", UriKind.Absolute, out var tcpUri))
+            return NormalizeHostAndPort(tcpUri.Host, tcpUri.Port, address);
+
+        return address;
+    }
+
+    private static string NormalizeHostAndPort(string host, int port, string originalAddress)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return originalAddress;
+
+        if (IPAddress.TryParse(host, out var ipAddress))
+            return FormatEndpoint(ipAddress, port);
+
+        var resolvedAddresses = Dns.GetHostAddresses(host);
+
+        var resolvedAddress = resolvedAddresses
+            .FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork)
+            ?? resolvedAddresses.FirstOrDefault();
+
+        if (resolvedAddress is null)
+            return originalAddress;
+
+        return FormatEndpoint(resolvedAddress, port);
+    }
+
+    private static string FormatEndpoint(IPAddress ipAddress, int port)
+    {
+        var host = ipAddress.AddressFamily == AddressFamily.InterNetworkV6
+            ? $"[{ipAddress}]"
+            : ipAddress.ToString();
+
+        return port > 0 ? $"{host}:{port}" : host;
     }
 }

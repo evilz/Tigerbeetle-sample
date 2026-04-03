@@ -1,7 +1,7 @@
-@TigerBeetleSample.Api_HostAddress = http://localhost:5253
+@Api = http://localhost:5253
 
 ### Create an account
-POST {{TigerBeetleSample.Api_HostAddress}}/accounts
+POST {{Api}}/accounts
 Content-Type: application/json
 
 {
@@ -13,13 +13,13 @@ Content-Type: application/json
 ###
 
 ### List all accounts
-GET {{TigerBeetleSample.Api_HostAddress}}/accounts
+GET {{Api}}/accounts
 Accept: application/json
 
 ###
 
 ### Create a transfer (replace {debitId} and {creditId} with actual GUIDs)
-POST {{TigerBeetleSample.Api_HostAddress}}/transfers
+POST {{Api}}/transfers
 Content-Type: application/json
 
 {
