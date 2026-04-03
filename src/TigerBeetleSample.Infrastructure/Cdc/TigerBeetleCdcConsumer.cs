@@ -83,7 +83,17 @@ public sealed class TigerBeetleCdcConsumer : BackgroundService
             try
             {
                 var json = Encoding.UTF8.GetString(ea.Body.Span);
-                var message = JsonSerializer.Deserialize<TigerBeetleCdcMessage>(json, JsonOptions);
+                TigerBeetleCdcMessage? message;
+                try
+                {
+                    message = JsonSerializer.Deserialize<TigerBeetleCdcMessage>(json, JsonOptions);
+                }
+                catch (JsonException ex)
+                {
+                    var snippet = json.Length > 200 ? json[..200] + "…" : json;
+                    throw new InvalidOperationException(
+                        $"TigerBeetle CDC: failed to deserialize message. Payload (truncated): {snippet}", ex);
+                }
 
                 if (message is not null)
                 {
@@ -127,7 +137,9 @@ public sealed class TigerBeetleCdcConsumer : BackgroundService
         var creditAccountId = ((UInt128)message.CreditAccount.Id).ToGuid();
 
         // TigerBeetle timestamps are nanoseconds since the Unix epoch (u64).
-        var nanoseconds = ulong.Parse(message.Transfer.Timestamp);
+        if (!ulong.TryParse(message.Transfer.Timestamp, out var nanoseconds))
+            throw new InvalidOperationException(
+                $"TigerBeetle CDC: cannot parse transfer timestamp '{message.Transfer.Timestamp}' as a nanosecond epoch.");
         var createdAt = DateTimeOffset.UnixEpoch.AddTicks((long)(nanoseconds / 100));
 
         var projection = new TransferProjection
