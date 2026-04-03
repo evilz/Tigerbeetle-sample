@@ -29,8 +29,8 @@ TigerBeetleSample.slnx
 flowchart LR
     C[Client] -->|POST /accounts| API[Minimal API]
     C -->|POST /transfers| API
-    C -->|GET /accounts, /accounts/{id}| API
-    C -->|GET /transfers/account/{id}| API
+    C -->|GET /accounts, /accounts/id| API
+    C -->|GET /transfers/account/id| API
 
     API -->|CreateAccountAsync| TB[(TigerBeetle)]
     API -->|CreateTransferAsync| TB
