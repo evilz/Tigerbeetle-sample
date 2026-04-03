@@ -1,5 +1,4 @@
 using Aspire.Hosting;
-using Aspire.Hosting.ApplicationModel;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -15,15 +14,15 @@ var rabbitmqPassword = builder.AddParameter("rabbitmq-password", "guest", secret
 var rabbitmq = builder.AddRabbitMQ("rabbitmq", userName: rabbitmqUser, password: rabbitmqPassword)
     .WithManagementPlugin();
 
-var rabbitmqEndpoint = rabbitmq.GetEndpoint("tcp");
-
 var tigerbeetle = builder
     .AddDockerfile("tigerbeetle", ".", "Dockerfile.tigerbeetle")
     // TigerBeetle needs io_uring; default Docker seccomp may block it on some hosts.
     .WithContainerRuntimeArgs("--security-opt", "seccomp=unconfined")
     .WithEndpoint(targetPort: 3000, port: 3000, scheme: "tcp", name: "tcp");
 
-var tigerbeetleEndpoint = tigerbeetle.GetEndpoint("tcp");
+var tigerBeetleAddressForHost = "127.0.0.1:3000";
+var tigerBeetleAddressForContainers = "tigerbeetle:3000";
+var rabbitMqAddressForContainers = "rabbitmq:5672";
 
 var api = builder.AddProject<Projects.TigerBeetleSample_Api>("api")
     .WithReference(postgresDb)
@@ -31,8 +30,8 @@ var api = builder.AddProject<Projects.TigerBeetleSample_Api>("api")
     .WaitFor(postgresDb)
     .WaitFor(rabbitmq)
     .WaitFor(tigerbeetle)
-    .WithEnvironment("TigerBeetle__Addresses",
-        $"{tigerbeetleEndpoint.Property(EndpointProperty.IPV4Host)}:{tigerbeetleEndpoint.Property(EndpointProperty.Port)}");
+    // API runs on the host process, so it should target the published host port.
+    .WithEnvironment("TigerBeetle__Addresses", tigerBeetleAddressForHost);
 
 // TigerBeetle native CDC sidecar — streams transfer events from TigerBeetle to RabbitMQ
 // using the AMQP 0.9.1 protocol. The sidecar waits for the API to be running; the
@@ -43,10 +42,9 @@ builder.AddDockerfile("tigerbeetle-cdc", ".", "Dockerfile.tigerbeetle-cdc")
     .WaitFor(tigerbeetle)
     .WaitFor(rabbitmq)
     .WaitFor(api)
-    .WithEnvironment("TB_ADDRESSES",
-        $"{tigerbeetleEndpoint.Property(EndpointProperty.IPV4Host)}:{tigerbeetleEndpoint.Property(EndpointProperty.Port)}")
-    .WithEnvironment("RABBITMQ_HOST",
-        $"{rabbitmqEndpoint.Property(EndpointProperty.IPV4Host)}:{rabbitmqEndpoint.Property(EndpointProperty.Port)}")
+    // CDC runs in Docker, so use Docker network DNS names.
+    .WithEnvironment("TB_ADDRESSES", tigerBeetleAddressForContainers)
+    .WithEnvironment("RABBITMQ_HOST", rabbitMqAddressForContainers)
     .WithEnvironment("RABBITMQ_USER", rabbitmqUser)
     .WithEnvironment("RABBITMQ_PASSWORD", rabbitmqPassword);
 

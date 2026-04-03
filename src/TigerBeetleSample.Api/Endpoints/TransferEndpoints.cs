@@ -1,4 +1,5 @@
 using TigerBeetleSample.Domain.Interfaces;
+using TigerBeetleSample.Api.Metrics;
 
 namespace TigerBeetleSample.Api.Endpoints;
 
@@ -31,6 +32,10 @@ public static class TransferEndpoints
             request.Ledger,
             request.Code,
             cancellationToken);
+
+        LedgerMetrics.TransfersCreated.Add(1,
+            new KeyValuePair<string, object?>("path", "/transfers"),
+            new KeyValuePair<string, object?>("ledger", request.Ledger));
 
         // The transfer is recorded in TigerBeetle (source of truth).
         // TigerBeetle's native CDC job streams the event to RabbitMQ, where

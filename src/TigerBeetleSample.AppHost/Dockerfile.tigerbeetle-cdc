@@ -7,13 +7,37 @@ COPY --from=tigerbeetle-binary /tigerbeetle /tigerbeetle
 # RABBITMQ_HOST   – RabbitMQ host:port (e.g. "127.0.0.1:5672")
 # RABBITMQ_USER   – RabbitMQ username
 # RABBITMQ_PASSWORD – RabbitMQ password
-CMD ["/bin/sh", "-c", \
-  "exec /tigerbeetle amqp \
-    --addresses=${TB_ADDRESSES} \
-    --cluster=0 \
-    --host=${RABBITMQ_HOST} \
-    --vhost=/ \
-    --user=${RABBITMQ_USER} \
-    --password=${RABBITMQ_PASSWORD} \
-    --publish-exchange=tigerbeetle \
+CMD ["/bin/sh", "-ec", \
+  "resolve_ipv4_host_port() { \
+      value=$1; \
+      label=$2; \
+      host=${value%:*}; \
+      port=${value##*:}; \
+      if [ -z \"$host\" ] || [ -z \"$port\" ] || [ \"$host\" = \"$value\" ]; then \
+        echo \"Invalid $label '$value'. Expected host:port.\" >&2; \
+        exit 1; \
+      fi; \
+      if echo \"$host\" | grep -Eq '^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$'; then \
+        ip=$host; \
+      else \
+        ip=$(getent ahostsv4 \"$host\" | awk 'NR==1 { print $1 }'); \
+      fi; \
+      if [ -z \"$ip\" ]; then \
+        echo \"Unable to resolve host '$host' from $label='$value'.\" >&2; \
+        exit 1; \
+      fi; \
+      echo \"${ip}:${port}\"; \
+    }; \
+   raw_addresses=${TB_ADDRESSES:-}; \
+   first_address=${raw_addresses%%,*}; \
+   tb_address=$(resolve_ipv4_host_port \"$first_address\" TB_ADDRESSES); \
+   rabbitmq_address=$(resolve_ipv4_host_port \"${RABBITMQ_HOST:-}\" RABBITMQ_HOST); \
+   exec /tigerbeetle amqp \
+     --addresses=${tb_address} \
+     --cluster=0 \
+     --host=${rabbitmq_address} \
+     --vhost=/ \
+     --user=${RABBITMQ_USER} \
+     --password=${RABBITMQ_PASSWORD} \
+     --publish-exchange=tigerbeetle \
   "]

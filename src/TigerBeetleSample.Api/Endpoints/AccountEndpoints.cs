@@ -1,5 +1,6 @@
 using TigerBeetleSample.Domain.Events;
 using TigerBeetleSample.Domain.Interfaces;
+using TigerBeetleSample.Api.Metrics;
 using Wolverine;
 
 namespace TigerBeetleSample.Api.Endpoints;
@@ -38,6 +39,10 @@ public static class AccountEndpoints
 
         await bus.PublishAsync(new AccountCreatedEvent(
             accountId, request.Name, request.Ledger, request.Code, DateTimeOffset.UtcNow));
+
+        LedgerMetrics.AccountsCreated.Add(1,
+            new KeyValuePair<string, object?>("path", "/accounts"),
+            new KeyValuePair<string, object?>("ledger", request.Ledger));
 
         return Results.Accepted($"/accounts/{accountId}", new { Id = accountId });
     }

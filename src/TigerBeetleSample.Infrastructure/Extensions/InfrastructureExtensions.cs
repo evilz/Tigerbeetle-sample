@@ -34,7 +34,7 @@ public static class InfrastructureExtensions
             var options = sp.GetRequiredService<IOptions<TigerBeetleOptions>>().Value;
             return new Client(
                 clusterID: (System.UInt128)options.ClusterId,
-                addresses: [NormalizeAddresses(options.Addresses)]);
+                addresses: NormalizeAddresses(options.Addresses));
         });
 
         var connectionString = configuration.GetConnectionString("ledgerdb")
@@ -66,15 +66,20 @@ public static class InfrastructureExtensions
         return services;
     }
 
-    private static string NormalizeAddresses(string addresses)
+    private static string[] NormalizeAddresses(string addresses)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(addresses);
 
         var normalizedAddresses = addresses
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(NormalizeAddress);
+            .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(NormalizeAddress)
+            .Where(a => !string.IsNullOrWhiteSpace(a))
+            .ToArray();
 
-        return string.Join(',', normalizedAddresses);
+        if (normalizedAddresses.Length == 0)
+            throw new ArgumentException("TigerBeetle address list is empty after normalization.", nameof(addresses));
+
+        return normalizedAddresses;
     }
 
     private static string NormalizeAddress(string address)

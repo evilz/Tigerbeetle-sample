@@ -1,4 +1,5 @@
 using TigerBeetle;
+using TigerBeetleSample.Api.Metrics;
 
 namespace TigerBeetleSample.Api.Endpoints;
 
@@ -60,6 +61,10 @@ public static class PerformanceEndpoints
         }
 
         var ids = accounts.Select(a => a.Id.ToGuid()).ToList();
+        LedgerMetrics.AccountsCreated.Add(ids.Count,
+            new KeyValuePair<string, object?>("path", "/perf/accounts/batch"),
+            new KeyValuePair<string, object?>("ledger", request.Ledger));
+
         return Results.Ok(new CreateBatchResponse(ids.Count, ids));
     }
 
@@ -95,6 +100,10 @@ public static class PerformanceEndpoints
                 $"Failed to create {errors.Length} transfer(s). " +
                 $"First error at index {errors[0].Index}: {errors[0].Result}.");
         }
+
+        LedgerMetrics.TransfersCreated.Add(transfers.Length,
+            new KeyValuePair<string, object?>("path", "/perf/transfers/batch"),
+            new KeyValuePair<string, object?>("ledger", request.Transfers[0].Ledger));
 
         return Results.Ok(new { Count = transfers.Length });
     }
