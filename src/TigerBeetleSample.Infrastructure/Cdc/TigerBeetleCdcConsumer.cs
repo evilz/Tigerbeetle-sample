@@ -78,6 +78,8 @@ public sealed class TigerBeetleCdcConsumer : BackgroundService
         var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += async (_, ea) =>
         {
+            // Use CancellationToken.None for ack/nack so that inflight messages are
+            // properly acknowledged even when shutdown is requested.
             try
             {
                 var json = Encoding.UTF8.GetString(ea.Body.Span);
@@ -85,15 +87,15 @@ public sealed class TigerBeetleCdcConsumer : BackgroundService
 
                 if (message is not null)
                 {
-                    await ProjectTransferAsync(message, stoppingToken);
+                    await ProjectTransferAsync(message, CancellationToken.None);
                 }
 
-                await channel.BasicAckAsync(ea.DeliveryTag, multiple: false, cancellationToken: stoppingToken);
+                await channel.BasicAckAsync(ea.DeliveryTag, multiple: false, cancellationToken: CancellationToken.None);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to process TigerBeetle CDC message");
-                await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true, cancellationToken: stoppingToken);
+                await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true, cancellationToken: CancellationToken.None);
             }
         };
 
@@ -142,8 +144,6 @@ public sealed class TigerBeetleCdcConsumer : BackgroundService
         session.Store(projection);
         await session.SaveChangesAsync(ct);
 
-        _logger.LogDebug(
-            "Projected transfer {TransferId} (debit: {DebitId}, credit: {CreditId}, amount: {Amount})",
-            transferId, debitAccountId, creditAccountId, projection.Amount);
+        _logger.LogDebug("Projected transfer {TransferId}", transferId);
     }
 }

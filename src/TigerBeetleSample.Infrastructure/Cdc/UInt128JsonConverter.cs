@@ -13,7 +13,12 @@ public sealed class UInt128JsonConverter : JsonConverter<System.UInt128>
     public override System.UInt128 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType == JsonTokenType.String)
-            return System.UInt128.Parse(reader.GetString()!);
+        {
+            var raw = reader.GetString()!;
+            if (!System.UInt128.TryParse(raw, out var parsed))
+                throw new JsonException($"TigerBeetle CDC: cannot parse '{raw}' as UInt128.");
+            return parsed;
+        }
 
         if (reader.TokenType == JsonTokenType.Number)
         {
@@ -21,7 +26,7 @@ public sealed class UInt128JsonConverter : JsonConverter<System.UInt128>
                 return (System.UInt128)u64;
         }
 
-        throw new JsonException($"Cannot read UInt128 from JSON token type {reader.TokenType}.");
+        throw new JsonException($"TigerBeetle CDC: cannot read UInt128 from JSON token type {reader.TokenType}.");
     }
 
     public override void Write(Utf8JsonWriter writer, System.UInt128 value, JsonSerializerOptions options)
