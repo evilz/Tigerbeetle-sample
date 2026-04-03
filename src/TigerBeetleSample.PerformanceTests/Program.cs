@@ -31,11 +31,43 @@ var transferCount = 10_000;
 var concurrency = 50;
 var batchSize = 500;
 
-if (args.Length > 0 && !string.IsNullOrWhiteSpace(args[0])) baseUrl = args[0].TrimEnd('/');
-if (args.Length > 1 && int.TryParse(args[1], out var ac) && ac > 0) accountCount = ac;
-if (args.Length > 2 && int.TryParse(args[2], out var tc) && tc > 0) transferCount = tc;
-if (args.Length > 3 && int.TryParse(args[3], out var cx) && cx > 0) concurrency = cx;
-if (args.Length > 4 && int.TryParse(args[4], out var bs) && bs > 0) batchSize = bs;
+if (args.Length > 0)
+{
+    if (string.IsNullOrWhiteSpace(args[0]))
+    {
+        Console.Error.WriteLine("ERROR: Invalid baseUrl — value cannot be empty or whitespace.");
+        PrintUsage();
+        return 1;
+    }
+    baseUrl = args[0].TrimEnd('/');
+}
+
+if (args.Length > 1) accountCount = ParsePositiveIntArg(args[1], "accountCount");
+if (args.Length > 2) transferCount = ParsePositiveIntArg(args[2], "transferCount");
+if (args.Length > 3) concurrency = ParsePositiveIntArg(args[3], "concurrency");
+if (args.Length > 4) batchSize = ParsePositiveIntArg(args[4], "batchSize");
+
+static int ParsePositiveIntArg(string value, string argName)
+{
+    if (int.TryParse(value, out var parsed) && parsed > 0)
+        return parsed;
+
+    Console.Error.WriteLine($"ERROR: Invalid {argName} '{value}' — expected a positive integer.");
+    PrintUsage();
+    Environment.Exit(1);
+    return 0;
+}
+
+static void PrintUsage()
+{
+    Console.Error.WriteLine();
+    Console.Error.WriteLine("Usage:");
+    Console.Error.WriteLine("  dotnet run -- [baseUrl] [accountCount] [transferCount] [concurrency] [batchSize]");
+    Console.Error.WriteLine();
+    Console.Error.WriteLine("Examples:");
+    Console.Error.WriteLine("  dotnet run -- http://localhost:5253 200 10000 50 500");
+    Console.Error.WriteLine("  dotnet run                            (uses all defaults)");
+}
 
 Console.WriteLine("═══════════════════════════════════════════════════════════════");
 Console.WriteLine("  TigerBeetle Performance Test Suite");
@@ -78,14 +110,18 @@ var (acctResults, acctSw) = await RunParallelRequestsAsync(
 PrintPhaseResult("Account creation (baseline)", acctResults, acctSw);
 
 var allAccounts = await FetchAccountsAsync(http, jsonOptions);
-if (allAccounts is null || allAccounts.Count < 2)
+var baselineAccounts = allAccounts?
+    .Where(a => a.Name.StartsWith($"baseline-{runId}-"))
+    .ToList();
+
+if (baselineAccounts is null || baselineAccounts.Count < 2)
 {
-    Console.WriteLine("  ✗ Cannot continue — need at least 2 accounts in the system.");
+    Console.WriteLine("  ✗ Cannot continue — need at least 2 accounts from this run.");
     return 1;
 }
 
-var debitId = allAccounts[0].Id;
-var creditId = allAccounts[1].Id;
+var debitId = baselineAccounts[0].Id;
+var creditId = baselineAccounts[1].Id;
 
 Console.WriteLine($"  Creating {transferCount:N0} transfers one-by-one (concurrency={concurrency}) …");
 Console.WriteLine($"    Debit account : {debitId}");
@@ -158,7 +194,9 @@ else
         _ => (object)new { DebitAccountId = rwDebitId, CreditAccountId = rwCreditId, Amount = 1UL },
         transferCount, concurrency, writeResults);
 
-    // Reader: alternates reading both accounts until writes finish
+    // Reader: alternates reading both accounts until writes finish.
+    // A small fixed delay between reads keeps the reader from becoming
+    // the dominant load source and makes the scenario easier to interpret.
     using var readCts = new CancellationTokenSource();
     var readTask = Task.Run(async () =>
     {
@@ -184,6 +222,10 @@ else
                 reqSw.Stop();
                 readResults.Add(new RequestResult(false, reqSw.ElapsedMilliseconds, ex.Message));
             }
+
+            // Pace reads so they validate consistency without saturating the server.
+            try { await Task.Delay(10, readCts.Token); }
+            catch (OperationCanceledException) { break; }
         }
     });
 
@@ -342,7 +384,7 @@ static void PrintBatchPhaseResult(
     Console.WriteLine();
     Console.WriteLine($"  ┌─ {label}");
     Console.WriteLine($"  │  Batch requests : {totalRequests:N0} (≈ {batchSize} transfers each)");
-    Console.WriteLine($"  │  Succeeded      : {succeededRequests:N0} requests ({succeededTransfers:N0} transfers)");
+    Console.WriteLine($"  │  Succeeded      : {succeededRequests:N0} requests ({succeededTransfers:N0} / {totalTransfers:N0} transfers)");
     Console.WriteLine($"  │  Failed         : {failedRequests:N0} requests");
     Console.WriteLine($"  │  Total elapsed  : {sw.ElapsedMilliseconds:N0} ms");
     Console.WriteLine($"  │  Throughput     : {transferThroughput:N0} transfers/sec");
