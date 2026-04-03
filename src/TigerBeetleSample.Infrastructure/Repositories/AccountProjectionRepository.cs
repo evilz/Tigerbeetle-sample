@@ -1,38 +1,27 @@
-using Microsoft.EntityFrameworkCore;
+using Marten;
 using TigerBeetleSample.Domain.Entities;
 using TigerBeetleSample.Domain.Interfaces;
-using TigerBeetleSample.Infrastructure.Data;
 
 namespace TigerBeetleSample.Infrastructure.Repositories;
 
 public sealed class AccountProjectionRepository : IAccountProjectionRepository
 {
-    private readonly AppDbContext _context;
+    private readonly IQuerySession _session;
 
-    public AccountProjectionRepository(AppDbContext context)
+    public AccountProjectionRepository(IQuerySession session)
     {
-        _context = context;
+        _session = session;
     }
 
     public async Task<IReadOnlyList<AccountProjection>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.Accounts
+        return await _session.Query<AccountProjection>()
             .OrderBy(a => a.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
     public async Task<AccountProjection?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        return await _context.Accounts.FindAsync([id], cancellationToken);
-    }
-
-    public async Task AddAsync(AccountProjection account, CancellationToken cancellationToken = default)
-    {
-        await _context.Accounts.AddAsync(account, cancellationToken);
-    }
-
-    public Task SaveChangesAsync(CancellationToken cancellationToken = default)
-    {
-        return _context.SaveChangesAsync(cancellationToken);
+        return await _session.LoadAsync<AccountProjection>(id, cancellationToken);
     }
 }

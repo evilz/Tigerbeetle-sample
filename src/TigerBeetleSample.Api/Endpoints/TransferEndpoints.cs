@@ -22,7 +22,6 @@ public static class TransferEndpoints
     private static async Task<IResult> CreateTransferAsync(
         CreateTransferRequest request,
         ILedgerService ledgerService,
-        ITransferProjectionRepository repository,
         CancellationToken cancellationToken)
     {
         var transferId = await ledgerService.CreateTransferAsync(
@@ -33,21 +32,10 @@ public static class TransferEndpoints
             request.Code,
             cancellationToken);
 
-        var projection = new Domain.Entities.TransferProjection
-        {
-            Id = transferId,
-            DebitAccountId = request.DebitAccountId,
-            CreditAccountId = request.CreditAccountId,
-            Amount = request.Amount,
-            Ledger = request.Ledger,
-            Code = request.Code,
-            CreatedAt = DateTimeOffset.UtcNow,
-        };
-
-        await repository.AddAsync(projection, cancellationToken);
-        await repository.SaveChangesAsync(cancellationToken);
-
-        return Results.Created($"/transfers/account/{request.DebitAccountId}", ToResponse(projection));
+        // The transfer is recorded in TigerBeetle (source of truth).
+        // TigerBeetle's native CDC job streams the event to RabbitMQ, where
+        // TigerBeetleCdcConsumer projects it into PostgreSQL asynchronously.
+        return Results.Accepted($"/transfers/account/{request.DebitAccountId}", new { Id = transferId });
     }
 
     private static async Task<IResult> GetTransfersByAccountAsync(

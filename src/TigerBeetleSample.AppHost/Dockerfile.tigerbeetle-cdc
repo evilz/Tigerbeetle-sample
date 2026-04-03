@@ -1,0 +1,19 @@
+FROM ghcr.io/tigerbeetle/tigerbeetle:0.16.78 AS tigerbeetle-binary
+
+FROM alpine:3.21
+COPY --from=tigerbeetle-binary /tigerbeetle /tigerbeetle
+
+# TB_ADDRESSES    – TigerBeetle cluster addresses (e.g. "127.0.0.1:3000")
+# RABBITMQ_HOST   – RabbitMQ host:port (e.g. "127.0.0.1:5672")
+# RABBITMQ_USER   – RabbitMQ username
+# RABBITMQ_PASSWORD – RabbitMQ password
+CMD ["/bin/sh", "-c", \
+  "exec /tigerbeetle amqp \
+    --addresses=${TB_ADDRESSES} \
+    --cluster=0 \
+    --host=${RABBITMQ_HOST} \
+    --vhost=/ \
+    --user=${RABBITMQ_USER} \
+    --password=${RABBITMQ_PASSWORD} \
+    --publish-exchange=tigerbeetle \
+  "]

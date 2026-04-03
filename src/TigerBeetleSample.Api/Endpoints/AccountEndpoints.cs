@@ -1,4 +1,6 @@
+using TigerBeetleSample.Domain.Events;
 using TigerBeetleSample.Domain.Interfaces;
+using Wolverine;
 
 namespace TigerBeetleSample.Api.Endpoints;
 
@@ -10,7 +12,9 @@ public static class AccountEndpoints
 
         group.MapPost("/", CreateAccountAsync)
             .WithName("CreateAccount")
-            .WithSummary("Create a new ledger account");
+            .WithSummary("Create a new ledger account")
+            .WithDescription("Creates a ledger account in TigerBeetle and publishes an event for async projection into PostgreSQL. " +
+                             "The account may not immediately appear in list/get endpoints due to eventual consistency.");
 
         group.MapGet("/", GetAccountsAsync)
             .WithName("GetAccounts")
@@ -26,25 +30,16 @@ public static class AccountEndpoints
     private static async Task<IResult> CreateAccountAsync(
         CreateAccountRequest request,
         ILedgerService ledgerService,
-        IAccountProjectionRepository repository,
+        IMessageBus bus,
         CancellationToken cancellationToken)
     {
         var accountId = await ledgerService.CreateAccountAsync(
             request.Name, request.Ledger, request.Code, cancellationToken);
 
-        var projection = new Domain.Entities.AccountProjection
-        {
-            Id = accountId,
-            Name = request.Name,
-            Ledger = request.Ledger,
-            Code = request.Code,
-            CreatedAt = DateTimeOffset.UtcNow,
-        };
+        await bus.PublishAsync(new AccountCreatedEvent(
+            accountId, request.Name, request.Ledger, request.Code, DateTimeOffset.UtcNow));
 
-        await repository.AddAsync(projection, cancellationToken);
-        await repository.SaveChangesAsync(cancellationToken);
-
-        return Results.Created($"/accounts/{accountId}", ToResponse(projection, 0, 0));
+        return Results.Accepted($"/accounts/{accountId}", new { Id = accountId });
     }
 
     private static async Task<IResult> GetAccountsAsync(

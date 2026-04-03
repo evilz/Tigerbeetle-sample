@@ -1,13 +1,17 @@
 using System.Net;
 using System.Net.Sockets;
+using Marten;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using TigerBeetle;
+using TigerBeetleSample.Domain.Entities;
 using TigerBeetleSample.Domain.Interfaces;
+using TigerBeetleSample.Infrastructure.Cdc;
 using TigerBeetleSample.Infrastructure.Options;
 using TigerBeetleSample.Infrastructure.Repositories;
 using TigerBeetleSample.Infrastructure.Services;
+using Wolverine.Marten;
 
 namespace TigerBeetleSample.Infrastructure.Extensions;
 
@@ -33,9 +37,31 @@ public static class InfrastructureExtensions
                 addresses: [NormalizeAddresses(options.Addresses)]);
         });
 
+        var connectionString = configuration.GetConnectionString("ledgerdb")
+            ?? throw new InvalidOperationException("Connection string 'ledgerdb' is required.");
+
+        services.AddMarten(opts =>
+        {
+            opts.Connection(connectionString);
+            opts.Schema.For<AccountProjection>().Identity(x => x.Id);
+            opts.Schema.For<TransferProjection>()
+                .Identity(x => x.Id)
+                .Index(x => x.DebitAccountId)
+                .Index(x => x.CreditAccountId);
+        })
+        .ApplyAllDatabaseChangesOnStartup()
+        .IntegrateWithWolverine();
+
         services.AddScoped<IAccountProjectionRepository, AccountProjectionRepository>();
         services.AddScoped<ITransferProjectionRepository, TransferProjectionRepository>();
         services.AddSingleton<ILedgerService, TigerBeetleLedgerService>();
+
+        // Guard CDC registration so hosts that don't have RabbitMQ available
+        // (tests, tooling, perf harnesses) can still use AddInfrastructure without failing.
+        if (configuration.GetValue<bool>("Cdc:Enabled"))
+        {
+            services.AddHostedService<TigerBeetleCdcConsumer>();
+        }
 
         return services;
     }
