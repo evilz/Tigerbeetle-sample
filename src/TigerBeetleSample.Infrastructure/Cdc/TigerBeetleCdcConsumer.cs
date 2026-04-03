@@ -22,6 +22,25 @@ public sealed class TigerBeetleCdcConsumer : BackgroundService
     private const string ExchangeName = "tigerbeetle";
     private const string QueueName = "tigerbeetle-projections";
 
+    /// <summary>
+    /// Maximum number of unacknowledged messages delivered to this consumer at once,
+    /// providing backpressure and preventing Marten/Postgres from being overwhelmed.
+    /// </summary>
+    private const ushort PrefetchCount = 100;
+
+    /// <summary>
+    /// All transfer event types emitted by TigerBeetle CDC.
+    /// Messages with unknown types are acked and skipped to avoid blocking the queue.
+    /// </summary>
+    private static readonly HashSet<string> KnownTransferTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "single_phase",
+        "two_phase_pending",
+        "two_phase_posted",
+        "two_phase_voided",
+        "two_phase_expired",
+    };
+
     private readonly IConfiguration _configuration;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<TigerBeetleCdcConsumer> _logger;
@@ -43,46 +62,18 @@ public sealed class TigerBeetleCdcConsumer : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var rabbitUri = new Uri(
-            _configuration.GetConnectionString("rabbitmq")
-                ?? "amqp://guest:guest@localhost:5672/");
-
-        var factory = new ConnectionFactory { Uri = rabbitUri };
-
-        using var connection = await factory.CreateConnectionAsync(stoppingToken);
-        using var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
-
-        // Declare the fanout exchange that tigerbeetle amqp publishes to.
-        // This is idempotent — safe to call even if tigerbeetle-cdc already created it.
-        await channel.ExchangeDeclareAsync(
-            exchange: ExchangeName,
-            type: ExchangeType.Fanout,
-            durable: true,
-            autoDelete: false,
-            cancellationToken: stoppingToken);
-
-        // Declare a durable queue and bind it to the TigerBeetle CDC exchange.
-        await channel.QueueDeclareAsync(
-            queue: QueueName,
-            durable: true,
-            exclusive: false,
-            autoDelete: false,
-            cancellationToken: stoppingToken);
-
-        await channel.QueueBindAsync(
-            queue: QueueName,
-            exchange: ExchangeName,
-            routingKey: string.Empty,
-            cancellationToken: stoppingToken);
+        var (connection, channel) = await CreateRabbitMqChannelAsync(stoppingToken);
+        using var rabbitConnection = connection;
+        using var rabbitChannel = channel;
 
         var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += async (_, ea) =>
         {
-            // Use CancellationToken.None for ack/nack so that inflight messages are
-            // properly acknowledged even when shutdown is requested.
+            // Use CancellationToken.None for ack/nack so messages are properly
+            // acknowledged even when shutdown is requested.
+            var json = Encoding.UTF8.GetString(ea.Body.Span);
             try
             {
-                var json = Encoding.UTF8.GetString(ea.Body.Span);
                 TigerBeetleCdcMessage? message;
                 try
                 {
@@ -91,20 +82,41 @@ public sealed class TigerBeetleCdcConsumer : BackgroundService
                 catch (JsonException ex)
                 {
                     var snippet = json.Length > 200 ? json[..200] + "…" : json;
-                    throw new InvalidOperationException(
-                        $"TigerBeetle CDC: failed to deserialize message. Payload (truncated): {snippet}", ex);
+                    _logger.LogError(ex, "TigerBeetle CDC: failed to deserialize message. Payload: {Snippet}", snippet);
+                    await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false, cancellationToken: CancellationToken.None);
+                    return;
                 }
 
-                if (message is not null)
+                if (message is null)
                 {
-                    await ProjectTransferAsync(message, CancellationToken.None);
+                    var snippet = json.Length > 200 ? json[..200] + "…" : json;
+                    _logger.LogError("TigerBeetle CDC: deserialized message was null. Payload: {Snippet}", snippet);
+                    await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false, cancellationToken: CancellationToken.None);
+                    return;
                 }
 
+                if (!KnownTransferTypes.Contains(message.Type))
+                {
+                    _logger.LogWarning("TigerBeetle CDC: received unknown message type '{Type}'; skipping.", message.Type);
+                    await channel.BasicAckAsync(ea.DeliveryTag, multiple: false, cancellationToken: CancellationToken.None);
+                    return;
+                }
+
+                if (message.Transfer.Amount > (System.UInt128)ulong.MaxValue)
+                {
+                    _logger.LogError(
+                        "TigerBeetle CDC: transfer amount '{Amount}' exceeds {MaxValue}; cannot project. Discarding.",
+                        message.Transfer.Amount, ulong.MaxValue);
+                    await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: false, cancellationToken: CancellationToken.None);
+                    return;
+                }
+
+                await ProjectTransferAsync(message, CancellationToken.None);
                 await channel.BasicAckAsync(ea.DeliveryTag, multiple: false, cancellationToken: CancellationToken.None);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to process TigerBeetle CDC message");
+                _logger.LogError(ex, "TigerBeetle CDC: transient error processing message; requeueing.");
                 await channel.BasicNackAsync(ea.DeliveryTag, multiple: false, requeue: true, cancellationToken: CancellationToken.None);
             }
         };
@@ -127,6 +139,75 @@ public sealed class TigerBeetleCdcConsumer : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Establishes a RabbitMQ connection with exponential backoff retry so that
+    /// transient connectivity issues (e.g. broker starting up) do not crash the host.
+    /// </summary>
+    private async Task<(IConnection Connection, IChannel Channel)> CreateRabbitMqChannelAsync(CancellationToken stoppingToken)
+    {
+        var rabbitUri = new Uri(
+            _configuration.GetConnectionString("rabbitmq")
+                ?? "amqp://guest:guest@localhost:5672/");
+
+        var factory = new ConnectionFactory { Uri = rabbitUri };
+        var retryDelay = TimeSpan.FromSeconds(1);
+        var maxRetryDelay = TimeSpan.FromSeconds(30);
+
+        while (true)
+        {
+            stoppingToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                var connection = await factory.CreateConnectionAsync(stoppingToken);
+                var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
+
+                // Limit unacknowledged messages to provide backpressure.
+                await channel.BasicQosAsync(prefetchSize: 0, prefetchCount: PrefetchCount, global: false, cancellationToken: stoppingToken);
+
+                // Declare the fanout exchange that tigerbeetle amqp publishes to.
+                // Idempotent — safe to call even if the CDC sidecar already created it.
+                await channel.ExchangeDeclareAsync(
+                    exchange: ExchangeName,
+                    type: ExchangeType.Fanout,
+                    durable: true,
+                    autoDelete: false,
+                    cancellationToken: stoppingToken);
+
+                // Declare a durable queue and bind it to the TigerBeetle CDC exchange.
+                await channel.QueueDeclareAsync(
+                    queue: QueueName,
+                    durable: true,
+                    exclusive: false,
+                    autoDelete: false,
+                    cancellationToken: stoppingToken);
+
+                await channel.QueueBindAsync(
+                    queue: QueueName,
+                    exchange: ExchangeName,
+                    routingKey: string.Empty,
+                    cancellationToken: stoppingToken);
+
+                return (connection, channel);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "TigerBeetle CDC: failed to connect to RabbitMQ or declare topology. Retrying in {RetryDelay}.",
+                    retryDelay);
+
+                await Task.Delay(retryDelay, stoppingToken);
+
+                retryDelay = TimeSpan.FromTicks(Math.Min(retryDelay.Ticks * 2, maxRetryDelay.Ticks));
+            }
+        }
+    }
+
     private async Task ProjectTransferAsync(TigerBeetleCdcMessage message, CancellationToken ct)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
@@ -136,11 +217,8 @@ public sealed class TigerBeetleCdcConsumer : BackgroundService
         var debitAccountId = ((UInt128)message.DebitAccount.Id).ToGuid();
         var creditAccountId = ((UInt128)message.CreditAccount.Id).ToGuid();
 
-        // TigerBeetle timestamps are nanoseconds since the Unix epoch (u64).
-        if (!ulong.TryParse(message.Transfer.Timestamp, out var nanoseconds))
-            throw new InvalidOperationException(
-                $"TigerBeetle CDC: cannot parse transfer timestamp '{message.Transfer.Timestamp}' as a nanosecond epoch.");
-        var createdAt = DateTimeOffset.UnixEpoch.AddTicks((long)(nanoseconds / 100));
+        // TigerBeetle timestamps are nanoseconds since the Unix epoch.
+        var createdAt = DateTimeOffset.UnixEpoch.AddTicks((long)(message.Transfer.Timestamp / 100));
 
         var projection = new TransferProjection
         {

@@ -12,7 +12,9 @@ public static class AccountEndpoints
 
         group.MapPost("/", CreateAccountAsync)
             .WithName("CreateAccount")
-            .WithSummary("Create a new ledger account");
+            .WithSummary("Create a new ledger account")
+            .WithDescription("Creates a ledger account in TigerBeetle and publishes an event for async projection into PostgreSQL. " +
+                             "The account may not immediately appear in list/get endpoints due to eventual consistency.");
 
         group.MapGet("/", GetAccountsAsync)
             .WithName("GetAccounts")

@@ -44,7 +44,10 @@ public static class InfrastructureExtensions
         {
             opts.Connection(connectionString);
             opts.Schema.For<AccountProjection>().Identity(x => x.Id);
-            opts.Schema.For<TransferProjection>().Identity(x => x.Id);
+            opts.Schema.For<TransferProjection>()
+                .Identity(x => x.Id)
+                .Index(x => x.DebitAccountId)
+                .Index(x => x.CreditAccountId);
         })
         .ApplyAllDatabaseChangesOnStartup()
         .IntegrateWithWolverine();
@@ -53,8 +56,12 @@ public static class InfrastructureExtensions
         services.AddScoped<ITransferProjectionRepository, TransferProjectionRepository>();
         services.AddSingleton<ILedgerService, TigerBeetleLedgerService>();
 
-        // Consumes TigerBeetle native CDC events from RabbitMQ and projects them to PostgreSQL.
-        services.AddHostedService<TigerBeetleCdcConsumer>();
+        // Guard CDC registration so hosts that don't have RabbitMQ available
+        // (tests, tooling, perf harnesses) can still use AddInfrastructure without failing.
+        if (configuration.GetValue<bool>("Cdc:Enabled"))
+        {
+            services.AddHostedService<TigerBeetleCdcConsumer>();
+        }
 
         return services;
     }

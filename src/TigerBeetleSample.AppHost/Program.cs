@@ -35,7 +35,9 @@ var api = builder.AddProject<Projects.TigerBeetleSample_Api>("api")
         $"{tigerbeetleEndpoint.Property(EndpointProperty.IPV4Host)}:{tigerbeetleEndpoint.Property(EndpointProperty.Port)}");
 
 // TigerBeetle native CDC sidecar — streams transfer events from TigerBeetle to RabbitMQ
-// using the AMQP 0.9.1 protocol. Waits for the API so the exchange is declared first.
+// using the AMQP 0.9.1 protocol. The sidecar waits for the API to be running; the
+// exchange is declared by TigerBeetleCdcConsumer at startup, but the sidecar has its
+// own retry logic to handle the small window where the exchange may not exist yet.
 builder.AddDockerfile("tigerbeetle-cdc", ".", "Dockerfile.tigerbeetle-cdc")
     .WithContainerRuntimeArgs("--security-opt", "seccomp=unconfined")
     .WaitFor(tigerbeetle)

@@ -5,12 +5,14 @@ namespace TigerBeetleSample.Infrastructure.Cdc;
 /// <summary>
 /// Represents the JSON message body published by TigerBeetle's native CDC job
 /// (<c>tigerbeetle amqp</c>). Only the fields needed for building projections are included.
-/// Per the TigerBeetle CDC spec, <c>u128</c> and <c>u64</c> values are encoded as JSON strings.
+/// Per the TigerBeetle CDC spec, <c>u128</c> and <c>u64</c> values are encoded as JSON strings
+/// for large values but may arrive as JSON numbers for small values; both are handled.
 /// </summary>
 public sealed record TigerBeetleCdcMessage
 {
     [JsonPropertyName("timestamp")]
-    public required string Timestamp { get; init; }
+    [JsonConverter(typeof(UInt64JsonConverter))]
+    public ulong Timestamp { get; init; }
 
     [JsonPropertyName("type")]
     public required string Type { get; init; }
@@ -42,7 +44,8 @@ public sealed record TigerBeetleCdcTransfer
     public ushort Code { get; init; }
 
     [JsonPropertyName("timestamp")]
-    public required string Timestamp { get; init; }
+    [JsonConverter(typeof(UInt64JsonConverter))]
+    public ulong Timestamp { get; init; }
 }
 
 public sealed record TigerBeetleCdcAccount
