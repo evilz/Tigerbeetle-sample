@@ -102,7 +102,7 @@ public sealed class TigerBeetleCdcConsumer : BackgroundService
                     return;
                 }
 
-                if (message.Transfer.Amount > (System.UInt128)ulong.MaxValue)
+                if (message.Transfer.Amount > (UInt128)ulong.MaxValue)
                 {
                     _logger.LogError(
                         "TigerBeetle CDC: transfer amount '{Amount}' exceeds {MaxValue}; cannot project. Discarding.",
