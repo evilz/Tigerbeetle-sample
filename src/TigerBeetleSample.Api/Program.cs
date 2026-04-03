@@ -22,11 +22,11 @@ builder.Host.UseWolverine(opts =>
     opts.UseRabbitMq(new Uri(rabbitMqConnectionString))
         .AutoProvision();
 
+    // Account creation events are published from the API because TigerBeetle CDC only
+    // covers transfers; account creation carries metadata (Name) that TigerBeetle
+    // doesn't store.
     opts.PublishMessage<AccountCreatedEvent>().ToRabbitQueue("account-created");
-    opts.PublishMessage<TransferCreatedEvent>().ToRabbitQueue("transfer-created");
-
     opts.ListenToRabbitQueue("account-created");
-    opts.ListenToRabbitQueue("transfer-created");
 
     opts.Discovery.IncludeAssembly(typeof(AccountProjectionHandler).Assembly);
 });

@@ -1,6 +1,4 @@
-using TigerBeetleSample.Domain.Events;
 using TigerBeetleSample.Domain.Interfaces;
-using Wolverine;
 
 namespace TigerBeetleSample.Api.Endpoints;
 
@@ -24,7 +22,6 @@ public static class TransferEndpoints
     private static async Task<IResult> CreateTransferAsync(
         CreateTransferRequest request,
         ILedgerService ledgerService,
-        IMessageBus bus,
         CancellationToken cancellationToken)
     {
         var transferId = await ledgerService.CreateTransferAsync(
@@ -35,15 +32,9 @@ public static class TransferEndpoints
             request.Code,
             cancellationToken);
 
-        await bus.PublishAsync(new TransferCreatedEvent(
-            transferId,
-            request.DebitAccountId,
-            request.CreditAccountId,
-            request.Amount,
-            request.Ledger,
-            request.Code,
-            DateTimeOffset.UtcNow));
-
+        // The transfer is recorded in TigerBeetle (source of truth).
+        // TigerBeetle's native CDC job streams the event to RabbitMQ, where
+        // TigerBeetleCdcConsumer projects it into PostgreSQL asynchronously.
         return Results.Accepted($"/transfers/account/{request.DebitAccountId}", new { Id = transferId });
     }
 

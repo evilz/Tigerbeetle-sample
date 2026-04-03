@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="Marten" Version="8.28.0" />
+    <PackageReference Include="RabbitMQ.Client" Version="7.1.2" />
     <PackageReference Include="tigerbeetle" Version="0.16.78" />
     <PackageReference Include="WolverineFx.Marten" Version="5.27.0" />
   </ItemGroup>

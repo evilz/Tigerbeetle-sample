@@ -2,15 +2,16 @@ using System.Net;
 using System.Net.Sockets;
 using Marten;
 using Microsoft.Extensions.Configuration;
-using Wolverine.Marten;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using TigerBeetle;
 using TigerBeetleSample.Domain.Entities;
 using TigerBeetleSample.Domain.Interfaces;
+using TigerBeetleSample.Infrastructure.Cdc;
 using TigerBeetleSample.Infrastructure.Options;
 using TigerBeetleSample.Infrastructure.Repositories;
 using TigerBeetleSample.Infrastructure.Services;
+using Wolverine.Marten;
 
 namespace TigerBeetleSample.Infrastructure.Extensions;
 
@@ -51,6 +52,9 @@ public static class InfrastructureExtensions
         services.AddScoped<IAccountProjectionRepository, AccountProjectionRepository>();
         services.AddScoped<ITransferProjectionRepository, TransferProjectionRepository>();
         services.AddSingleton<ILedgerService, TigerBeetleLedgerService>();
+
+        // Consumes TigerBeetle native CDC events from RabbitMQ and projects them to PostgreSQL.
+        services.AddHostedService<TigerBeetleCdcConsumer>();
 
         return services;
     }
