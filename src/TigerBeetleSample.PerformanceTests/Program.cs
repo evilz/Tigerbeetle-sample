@@ -211,7 +211,8 @@ else
     else
     {
         Console.WriteLine($"⚠ MISMATCH — debits posted = {balance.DebitsPosted:N0}, expected {expectedDebits:N0}");
-        Console.WriteLine("    This may indicate write failures or in-flight transfers at read time.");
+        Console.WriteLine("    Check for write failures above — TigerBeetle is linearizable so");
+        Console.WriteLine("    any posted transfer is immediately visible in subsequent reads.");
     }
 }
 
@@ -331,7 +332,7 @@ static void PrintBatchPhaseResult(
     var totalRequests = list.Count;
     var succeededRequests = list.Count(r => r.Success);
     var failedRequests = totalRequests - succeededRequests;
-    var succeededTransfers = succeededRequests * batchSize;
+    var succeededTransfers = list.Where(r => r.Success).Sum(r => r.TransferCount);
     var transferThroughput = succeededTransfers / Math.Max(sw.Elapsed.TotalSeconds, 0.001);
     var latencies = list.Select(r => r.LatencyMs).OrderBy(x => x).ToArray();
     var p50 = Percentile(latencies, 50);
@@ -445,12 +446,12 @@ static async Task<(ConcurrentBag<RequestResult> Results, Stopwatch Sw, int Total
             {
                 using var resp = await http.PostAsJsonAsync("/perf/transfers/batch", body, jsonOptions, ct);
                 reqSw.Stop();
-                results.Add(new RequestResult(resp.IsSuccessStatusCode, reqSw.ElapsedMilliseconds, null));
+                results.Add(new RequestResult(resp.IsSuccessStatusCode, reqSw.ElapsedMilliseconds, null, thisSize));
             }
             catch (Exception ex)
             {
                 reqSw.Stop();
-                results.Add(new RequestResult(false, reqSw.ElapsedMilliseconds, ex.Message));
+                results.Add(new RequestResult(false, reqSw.ElapsedMilliseconds, ex.Message, thisSize));
             }
         });
 
@@ -519,7 +520,7 @@ static async Task<AccountResponse?> FetchAccountBalanceAsync(HttpClient http, Js
 // DTOs
 // ---------------------------------------------------------------------------
 
-internal sealed record RequestResult(bool Success, long LatencyMs, string? Error);
+internal sealed record RequestResult(bool Success, long LatencyMs, string? Error, int TransferCount = 1);
 
 internal sealed record AccountSummary(Guid Id, string Name);
 

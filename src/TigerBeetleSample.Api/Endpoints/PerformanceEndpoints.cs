@@ -116,8 +116,8 @@ public static class PerformanceEndpoints
         var balances = accounts
             .Select(a => new PerfBalanceResponse(
                 a.Id.ToGuid(),
-                (ulong)a.CreditsPosted,
-                (ulong)a.DebitsPosted))
+                a.CreditsPosted,
+                a.DebitsPosted))
             .ToList();
 
         return Results.Ok(balances);
@@ -139,4 +139,4 @@ public record GetBalancesBatchRequest(List<Guid> AccountIds);
 
 public record CreateBatchResponse(int Count, List<Guid> Ids);
 
-public record PerfBalanceResponse(Guid AccountId, ulong CreditsPosted, ulong DebitsPosted);
+public record PerfBalanceResponse(Guid AccountId, UInt128 CreditsPosted, UInt128 DebitsPosted);
